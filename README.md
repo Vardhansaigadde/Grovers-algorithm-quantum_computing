@@ -55,8 +55,8 @@ This repository demonstrates:
 
 ### 1. Clone the Repository
 ```bash
-git clone https://github.com/<your-username>/<your-repo-name>.git
-cd <your-repo-name>
+git clone https://github.com/Vardhansaigadde/Grovers-algorithm-quantum_computing.git
+cd Grovers-algorithm-quantum_computing
 ```
 
 ### 2. Create and Activate a Virtual Environment
