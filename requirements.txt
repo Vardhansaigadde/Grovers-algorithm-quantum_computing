@@ -1,0 +1,14 @@
+# Quantum Computing
+qiskit
+qiskit-aer
+qiskit-ibm-runtime
+pylatexenc
+
+# Web Application & Visualization
+streamlit
+matplotlib
+
+# Data Processing & Synthetic Data
+pandas
+numpy
+faker

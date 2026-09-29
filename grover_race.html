@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Grover Race: quantum vs classical password search</title>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@500;700;800&family=IBM+Plex+Sans:wght@400;500&family=IBM+Plex+Mono:wght@500&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#eef2fa;--panel:#fff;--ink:#0f1b33;--mute:#56627d;--line:#d5dcec;--cl:#c9760f;--qu:#5b4be0;--ok:#138a5b;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media(prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0b1426;--panel:#12203a;--ink:#eaf0ff;--mute:#9aa9c9;--line:#243556;--cl:#f2b04a;--qu:#9a95ff;--ok:#4fd6a0}}
+:root[data-theme="dark"]{--bg:#0b1426;--panel:#12203a;--ink:#eaf0ff;--mute:#9aa9c9;--line:#243556;--cl:#f2b04a;--qu:#9a95ff;--ok:#4fd6a0}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font:400 16px/1.55 "IBM Plex Sans",system-ui,sans-serif}
+main{max-width:1080px;margin:0 auto;padding:28px 18px 60px}
+h1{font:800 clamp(30px,5.5vw,56px)/1.02 "Bricolage Grotesque",sans-serif;letter-spacing:-.02em;margin:8px 0 14px;max-width:16em}
+h2{font:700 26px/1.15 "Bricolage Grotesque",sans-serif;margin:0 0 6px}
+p.lead{color:var(--mute);max-width:46em;margin:0 0 22px}
+section{margin-top:46px}
+.bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:16px}
+input,select,button{font:inherit;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:11px 14px}
+input{flex:1 1 260px;min-width:0;font-family:"IBM Plex Mono",monospace;font-size:14px}
+button{cursor:pointer;font-weight:500}
+button.go{background:var(--qu);border-color:var(--qu);color:#fff}
+:focus-visible{outline:3px solid var(--qu);outline-offset:2px}
+.lanes{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+@media(max-width:720px){.lanes{grid-template-columns:1fr}}
+.lane{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:14px}
+.lane h3{margin:0;font:700 18px "Bricolage Grotesque",sans-serif}
+.lane.c h3{color:var(--cl)}.lane.q h3{color:var(--qu)}
+.lane small{color:var(--mute)}
+canvas{width:100%;height:230px;display:block;margin:10px 0 6px}
+.cnt{font:800 44px/1 "Bricolage Grotesque",sans-serif}
+.lane.c .cnt{color:var(--cl)}.lane.q .cnt{color:var(--qu)}
+.res{margin-top:16px;background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:16px;display:none}
+.res.on{display:block}
+.grid3{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+.k{color:var(--mute);font-size:13px}
+.v{font:500 15px "IBM Plex Mono",monospace;word-break:break-all}
+.pw{font-size:22px;color:var(--ok)}
+.win{font:800 22px "Bricolage Grotesque",sans-serif;margin:0 0 10px}
+.row{display:flex;align-items:center;gap:10px;margin:8px 0}
+.row .lab{width:150px;flex:none;font-size:14px}
+.trk{flex:1;background:var(--line);border-radius:6px;height:22px;overflow:hidden}
+.fill{height:100%;border-radius:6px;transition:width .5s;display:flex;align-items:center;padding-left:8px;font:500 12px "IBM Plex Mono",monospace;color:#fff;white-space:nowrap}
+.note{font-size:14px;color:var(--mute);border-left:3px solid var(--line);padding-left:12px;margin-top:16px;max-width:52em}
+input[type=range]{width:100%;padding:0;accent-color:var(--qu)}
+.big{font:800 clamp(26px,4vw,40px)/1.1 "Bricolage Grotesque",sans-serif}
+@media(prefers-reduced-motion:reduce){.fill{transition:none}}
+</style>
+</head>
+<body>
+<main>
+<h1>Find one password among a thousand accounts. Watch two searches race.</h1>
+<p class="lead">Type a username or email, or pick a random account. Classical search checks accounts one by one. Grover's quantum algorithm amplifies the right answer in about √N steps.</p>
+
+<div class="bar">
+  <input id="q" aria-label="Username or email" placeholder="username or email" autocomplete="off">
+  <select id="size" aria-label="Database size"><option value="64">64 accounts</option><option value="256" selected>256 accounts</option><option value="1024">1,024 accounts</option></select>
+  <button class="go" id="go">Start race</button>
+  <button id="rnd">Random account</button>
+</div>
+
+<div class="lanes">
+  <div class="lane c"><h3>Classical linear search</h3><small>checks accounts one at a time</small><canvas id="cc"></canvas><div class="cnt" id="cn">0</div><small>comparisons</small></div>
+  <div class="lane q"><h3>Grover's algorithm</h3><small>each bar is one account's amplitude</small><canvas id="gc"></canvas><div class="cnt" id="gn">0</div><small>oracle calls</small></div>
+</div>
+
+<div class="res" id="res" aria-live="polite">
+  <p class="win" id="win"></p>
+  <div class="grid3">
+    <div><div class="k">Account</div><div class="v" id="r1"></div></div>
+    <div><div class="k">Email</div><div class="v" id="r2"></div></div>
+    <div><div class="k">Password retrieved</div><div class="v pw" id="r3"></div></div>
+    <div><div class="k">Grover success probability</div><div class="v" id="r4"></div></div>
+    <div><div class="k">Measured in this browser: classical scan</div><div class="v" id="r5"></div></div>
+    <div><div class="k">Measured in this browser: Grover simulation</div><div class="v" id="r6"></div></div>
+  </div>
+  <div class="note">Counters count queries, not seconds. Simulating a quantum computer on a normal machine costs extra time, so the classical scan is faster on the clock here. The advantage is fewer queries, and it grows with size (see below).</div>
+</div>
+
+<section>
+  <h2>Now scale it up</h2>
+  <p class="lead">Slide the database size. Classical needs about N/2 checks on average, Grover about 0.785·√N.</p>
+  <input type="range" id="sl" min="3" max="12" value="6" aria-label="Database size exponent">
+  <p class="big" id="sn"></p>
+  <div class="row"><span class="lab" style="color:var(--cl)">Classical</span><div class="trk"><div class="fill" id="bc" style="background:var(--cl)"></div></div></div>
+  <div class="row"><span class="lab" style="color:var(--qu)">Grover</span><div class="trk"><div class="fill" id="bg" style="background:var(--qu)"></div></div></div>
+  <p class="k" id="tm"></p>
+</section>
+
+<section>
+  <h2>What real quantum hardware did</h2>
+  <p class="lead">The same search run on a real IBM quantum computer (ibm_kingston). The 2-qubit circuit is short and stays accurate. The 3-qubit circuit needs many more gates, and noise pulls the result down.</p>
+  <div id="hw"></div>
+  <div class="note">This page simulates Grover exactly with state-vector math. Names and usernames are synthetic, and passwords are drawn from a small list of common passwords. The oracle marks a known index, as in standard demonstrations. A real database would use a hash index, which beats unsorted linear search.</div>
+</section>
+</main>
+
+<script>
+const $=id=>document.getElementById(id);
+const RM=matchMedia("(prefers-reduced-motion:reduce)").matches;
+const cs=n=>getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+function rng(a){return()=>{a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
+const F="Aarav Maya Liam Sofia Noah Priya Ethan Zara Lucas Nina Omar Chloe Ravi Emma Kai Leah Arjun Mia Diego Anna".split(" ");
+const L="Sharma Taylor Garcia Nguyen Patel Smith Brown Khan Lopez Reddy Kumar Jones Silva Clark Rao Young Baker Hall Ward Cruz".split(" ");
+const D=["gmail.com","yahoo.com","outlook.com","proton.me","hotmail.com"];
+const P="123456 password 12345678 qwerty 123456789 12345 1234 111111 1234567 dragon 123123 baseball abc123 football monkey letmein shadow master 666666 qwertyuiop 123321 mustang 1234567890 michael 654321 superman 1qaz2wsx 7777777 121212 000000 qazwsx 123qwe killer trustno1 jordan jennifer zxcvbnm asdfgh hunter buster soccer harley batman deputy sunshine iloveyou".split(" ");
+const cache={};
+function data(N){if(cache[N])return cache[N];const r=rng(7),seen=new Set(),o=[];
+ while(o.length<N){const f=F[r()*F.length|0],l=L[r()*L.length|0],u=(f[0]+l+(r()*900+10|0)).toLowerCase();if(seen.has(u))continue;seen.add(u);
+  o.push({n:f+" "+l,u,e:u+"@"+D[r()*D.length|0],p:P[r()*P.length|0]})}
+ return cache[N]=o}
+function fit(c){const d=devicePixelRatio||1,w=c.clientWidth,h=c.clientHeight;c.width=w*d;c.height=h*d;const x=c.getContext("2d");x.setTransform(d,0,0,d,0,0);return[x,w,h]}
+function drawC(N,seen,t,found){const[x,w,h]=fit($("cc"));const cols=Math.ceil(Math.sqrt(N*w/h)),rows=Math.ceil(N/cols),s=Math.min(w/cols,h/rows);
+ for(let i=0;i<N;i++){const cx=(i%cols)*s,cy=(i/cols|0)*s;x.fillStyle=i<seen?cs("--cl"):cs("--line");x.globalAlpha=i<seen?.85:.6;x.fillRect(cx+.5,cy+.5,s-1,s-1)}
+ x.globalAlpha=1;if(found){x.strokeStyle=cs("--ok");x.lineWidth=3;const cx=(t%cols)*s,cy=(t/cols|0)*s;x.strokeRect(cx-1,cy-1,s+2,s+2)}}
+function drawG(amp,t){const[x,w,h]=fit($("gc"));const N=amp.length,bw=w/N,m=h/2;x.strokeStyle=cs("--line");x.beginPath();x.moveTo(0,m);x.lineTo(w,m);x.stroke();
+ for(let i=0;i<N;i++){x.fillStyle=i===t?cs("--qu"):cs("--mute");x.globalAlpha=i===t?1:.55;const v=amp[i]*(m-4);x.fillRect(i*bw,m-Math.max(v,0),Math.max(bw-(N>256?0:1),1),Math.abs(v)||1)}x.globalAlpha=1}
+function frames(N,t){const k=Math.max(1,Math.floor(Math.PI/4*Math.sqrt(N))),a=new Float64Array(N).fill(1/Math.sqrt(N)),f=[a.slice()];
+ for(let r=0;r<k;r++){a[t]*=-1;let s=0;for(let i=0;i<N;i++)s+=a[i];s/=N;for(let i=0;i<N;i++)a[i]=2*s-a[i];f.push(a.slice())}return f}
+let run=0,curN=256;
+function reset(N){const d=data(N);drawC(N,0,0,false);drawG(new Float64Array(N).fill(1/Math.sqrt(N)),-1);$("cn").textContent=0;$("gn").textContent=0;$("res").classList.remove("on")}
+async function race(){const id=++run,N=+$("size").value,d=data(N),key=$("q").value.trim().toLowerCase();
+ const t=d.findIndex(r=>r.u===key||r.e===key);
+ if(t<0){$("res").classList.add("on");$("win").textContent="No account matches that username or email. Try Random account.";["r1","r2","r3","r4","r5","r6"].forEach(i=>$(i).textContent="");return}
+ $("res").classList.remove("on");
+ const scan=()=>{let c=0;for(const r of d){c++;if(r.u===key||r.e===key)break}return c};
+ let t0=performance.now();let c=0;for(let i=0;i<300;i++)c=scan();const ct=(performance.now()-t0)/300;
+ t0=performance.now();const fr=frames(N,t);const gt=performance.now()-t0;const k=fr.length-1;
+ let seen=0,g=0,tick=0;const per=Math.ceil(N/220);
+ await new Promise(done=>{(function step(){if(id!==run)return done();
+  if(seen<c){seen=RM?c:Math.min(c,seen+per);$("cn").textContent=seen;drawC(N,seen,t,seen>=c)}
+  if(g<k&&(RM||++tick%12===0)){g=RM?k:g+1;$("gn").textContent=g;drawG(fr[g],t)}
+  (seen>=c&&g>=k)?done():requestAnimationFrame(step)})()});
+ if(id!==run)return;
+ drawC(N,c,t,true);const rec=d[t],p=fr[k][t]**2;
+ $("win").textContent=k<c?`Grover found it in ${k} queries. Classical needed ${c}.`:`Classical got lucky: ${c} checks vs Grover's ${k}. Try an account further down the list.`;
+ $("r1").textContent=rec.n+" ("+rec.u+")";$("r2").textContent=rec.e;$("r3").textContent=rec.p;$("r4").textContent=(p*100).toFixed(1)+"%";
+ $("r5").textContent=(ct*1000).toFixed(1)+" µs";$("r6").textContent=gt.toFixed(2)+" ms";$("res").classList.add("on")}
+function prefill(){const N=+$("size").value,d=data(N);$("q").value=d[Math.floor(N*.82)].u;reset(N)}
+$("go").onclick=race;$("q").onkeydown=e=>e.key==="Enter"&&race();
+$("rnd").onclick=()=>{const N=+$("size").value,d=data(N);$("q").value=d[Math.random()*N|0][Math.random()<.5?"u":"e"];race()};
+$("size").onchange=()=>{run++;prefill()};
+addEventListener("resize",()=>{if(!$("res").classList.contains("on"))reset(+$("size").value)});
+function dur(s){if(s<1)return(s*1000).toFixed(0)+" ms";if(s<60)return s.toFixed(1)+" s";if(s<3600)return(s/60).toFixed(1)+" min";if(s<86400)return(s/3600).toFixed(1)+" hours";if(s<3.15e7)return(s/86400).toFixed(1)+" days";return(s/3.15e7).toFixed(1)+" years"}
+function scale(){const e=+$("sl").value,N=10**e,c=N/2,g=Math.ceil(Math.PI/4*Math.sqrt(N));
+ $("sn").textContent=N.toLocaleString("en-US")+" accounts";
+ $("bc").style.width=Math.max(8,Math.log10(c)/12*100)+"%";$("bc").textContent=c.toLocaleString("en-US");
+ $("bg").style.width=Math.max(8,Math.log10(g)/12*100)+"%";$("bg").textContent=g.toLocaleString("en-US");
+ $("tm").textContent=`If a machine could run 1 million queries per second (an assumption for illustration): classical about ${dur(c/1e6)}, Grover about ${dur(g/1e6)}. Bars use a log scale.`}
+$("sl").oninput=scale;scale();
+const HW=[["2 qubits (4 accounts)",100,100,99.3],["3 qubits (8 accounts)",94.5,95,78.4]];
+$("hw").innerHTML=HW.map(([n,a,b,c])=>`<p class="k" style="margin:14px 0 2px">${n}</p>`+[["Theory",a,"var(--mute)"],["Ideal simulator",b,"var(--qu)"],["Real IBM hardware",c,"var(--ok)"]].map(([l,v,col])=>`<div class="row"><span class="lab">${l}</span><div class="trk"><div class="fill" style="width:${v}%;background:${col}">${v}%</div></div></div>`).join("")).join("");
+prefill();setTimeout(race,500);
+</script>
+</body>
+</html>
